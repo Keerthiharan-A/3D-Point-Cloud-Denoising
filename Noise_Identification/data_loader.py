@@ -3,9 +3,8 @@ import torch
 from scipy.spatial import Delaunay
 
 def generate_input(point_cloud):
-    # Perform Delaunay triangulation
-    tri = Delaunay(point_cloud)
 
+    tri = Delaunay(point_cloud)
     # Extract the edges (pairs of points connected in the triangulation)
     edges = set()
     for simplex in tri.simplices:
