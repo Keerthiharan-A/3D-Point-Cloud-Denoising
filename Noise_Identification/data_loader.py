@@ -1,6 +1,13 @@
 import numpy as np
 import torch
 from scipy.spatial import Delaunay
+import config
+import os
+from torch_geometric.data import Data
+
+def load_xyz(file_path):
+    data = np.loadtxt(file_path, skiprows=2, usecols=(1, 2, 3))  # Skip 2 rows for metadata
+    return data
 
 def generate_input(point_cloud):
 
@@ -20,3 +27,51 @@ def generate_input(point_cloud):
     edge_attr = torch.tensor(distances, dtype=torch.float).view(-1, 1)
 
     return edge_index, edge_attr
+
+def get_label(file_name):
+    base_name = os.path.splitext(file_name)[0]
+    
+    # Check if any noise level matches the end of the base file name
+    for noise_level in config.noise_levels:
+        if base_name.endswith(noise_level):
+            parts = noise_level.split("_")
+            noise, s = parts[0], int(parts[-1][1])
+            if s<3: severity = "low"
+            else: severity = "high"
+            return config.label_map[f"{noise}_{severity}"]
+            
+    return 0
+
+def generate_data(folder_path):
+    # Load all .xyz files from the folder
+    xyz_files = [f for f in os.listdir(folder_path) if f.endswith('.xyz')]
+
+    # Prepare the data list to hold all graph data
+    data_list = []
+    for file_name in xyz_files:
+        file_path = os.path.join(folder_path, file_name)
+        data_array = load_xyz(file_path)
+        edge_index, edge_attr = generate_input(data_array)
+        
+        label = get_label(file_name)
+
+        data = Data(
+            x=torch.tensor(data_array, dtype=torch.float), 
+            edge_index=edge_index, 
+            edge_attr=edge_attr,
+            y=torch.tensor(label, dtype=torch.long)
+        )
+        data_list.append(data)
+
+        all_x = torch.cat([data.x for data in data_list], dim=0)
+        all_edge_index = torch.cat([data.edge_index for data in data_list], dim=1)
+        all_edge_attr = torch.cat([data.edge_attr for data in data_list], dim=0) if data_list[0].edge_attr is not None else None
+        all_labels = torch.cat([data.y.unsqueeze(0) for data in data_list], dim=0)  # Combine labels
+
+        # Create a single batched Data object
+        batched_data = Data(x=all_x, edge_index=all_edge_index, edge_attr=all_edge_attr, y=all_labels)
+
+        # Save the processed data
+        output_file = 'processed_data.pt'
+        torch.save(batched_data, output_file)
+        print(f"Processed dataset saved to {output_file}")
