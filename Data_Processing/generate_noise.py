@@ -30,23 +30,15 @@ def impulse_noise(pointcloud, severity):
     pointcloud[index] += np.random.choice([-1, 1], size=(c, C)) * 0.1
     return pointcloud.astype('float32')
 
-def upsampling(pointcloud, severity):
-    N, C = pointcloud.shape
-    c = [N//5, N//4, N//3, N//2, N][severity-1]
-    index = np.random.choice(N, c, replace=False)
-    add = pointcloud[index] + np.random.uniform(-0.05, 0.05, (c, C))
-    return np.concatenate((pointcloud, add), axis=0).astype('float32')
-
 MAP = {
     'uniform': uniform_noise,
     'gaussian': gaussian_noise,
     'background': background_noise,
-    'impulse': impulse_noise,
-    'upsampling': upsampling
+    'impulse': impulse_noise
 }
 
-INPUT_FOLDER = "punet_data/punet_d/50000_ground_truth"
-OUTPUT_FOLDER = "punet_data/punet_d/punet_noisy"
+INPUT_FOLDER = "3D_Data/punet_data/punet_d/50000_ground_truth"
+OUTPUT_FOLDER = "3D_Data/punet_data/punet_d/punet_noisy"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 def load_xyz(file_path):

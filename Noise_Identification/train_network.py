@@ -30,7 +30,7 @@ num_samples = batched_data.x.shape[0]
 # Define split sizes
 train_size = int(0.6 * num_samples)
 val_size = int(0.2 * num_samples)
-test_size = num_samples - train_size - val_size  # Ensure all data is used
+test_size = num_samples - train_size - val_size
 
 # Shuffle indices
 indices = torch.randperm(num_samples)
@@ -126,7 +126,8 @@ def train(model, train_loader, val_loader, optimizer, device, alpha=1.0, num_epo
 input_dim = config.input_dim
 hidden_dim = config.hidden_dim
 latent_dim = config.latent_dim
-model = GraphAutoencoder(input_dim, hidden_dim, latent_dim)
+num_classes = config.num_classes
+model = GraphAutoencoder(input_dim, hidden_dim, latent_dim, num_classes)
 criterion = torch.nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
 

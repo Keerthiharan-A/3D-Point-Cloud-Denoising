@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 
 class GraphAutoencoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, latent_dim, num_classes = 11):
+    def __init__(self, input_dim, hidden_dim, latent_dim, num_classes):
         super(GraphAutoencoder, self).__init__()
         
         # Encoder
