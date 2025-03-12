@@ -14,9 +14,9 @@ def get_latent_features(model, data):
     
     return latent_features
 
-generate_data("../3D_Data") # To be run again only when datset is changed
-file_path = "processed_data.pt"
-batched_data = torch.load(file_path)
+output_file = '3D-Point-Cloud-Denoising/Noise_Identification/processed_data.pt'
+generate_data("3D_Data", output_file) # To be run again only when datset is changed
+batched_data = torch.load(output_file)
 print("Dataset loaded successfully!")
 
 # Print the shapes to confirm

@@ -6,7 +6,7 @@ import os
 from torch_geometric.data import Data
 
 def load_xyz(file_path):
-    data = np.loadtxt(file_path, skiprows=2, usecols=(1, 2, 3))  # Skip 2 rows for metadata
+    data = np.loadtxt(file_path, usecols=(0, 1, 2))
     return data
 
 def generate_input(point_cloud):
@@ -35,24 +35,30 @@ def get_label(file_name):
     for noise_level in config.noise_levels:
         if base_name.endswith(noise_level):
             parts = noise_level.split("_")
-            noise, s = parts[0], int(parts[-1][1])
+            noise, s = parts[0], int(parts[-1])
             if s<3: severity = "low"
             else: severity = "high"
             return config.label_map[f"{noise}_{severity}"]
             
     return 0
 
-def generate_data(folder_path):
+def generate_data(folder_path, output_file):
     # Load all .xyz files from the folder
-    xyz_files = [f for f in os.listdir(folder_path) if f.endswith('.xyz')]
+    xyz_files = []
+    for root, _, files in os.walk(folder_path):
+        for f in files:
+            if f.endswith('.xyz'):
+                xyz_files.append(os.path.join(root, f))
+    print("Processing ", len(xyz_files), " .xyz files")
 
     # Prepare the data list to hold all graph data
+    i = 0
     data_list = []
-    for file_name in xyz_files:
-        file_path = os.path.join(folder_path, file_name)
+
+    for file_path in xyz_files:
         data_array = load_xyz(file_path)
         edge_index, edge_attr = generate_input(data_array)
-        
+        file_name = os.path.basename(file_path)
         label = get_label(file_name)
 
         data = Data(
@@ -62,16 +68,18 @@ def generate_data(folder_path):
             y=torch.tensor(label, dtype=torch.long)
         )
         data_list.append(data)
+        print("File : ", i)
+        i += 1
+    
+    all_x = torch.cat([data.x for data in data_list], dim=0)
+    all_edge_index = torch.cat([data.edge_index for data in data_list], dim=1)
+    all_edge_attr = torch.cat([data.edge_attr for data in data_list], dim=0) if data_list[0].edge_attr is not None else None
+    all_labels = torch.cat([data.y.unsqueeze(0) for data in data_list], dim=0)  # Combine labels
 
-        all_x = torch.cat([data.x for data in data_list], dim=0)
-        all_edge_index = torch.cat([data.edge_index for data in data_list], dim=1)
-        all_edge_attr = torch.cat([data.edge_attr for data in data_list], dim=0) if data_list[0].edge_attr is not None else None
-        all_labels = torch.cat([data.y.unsqueeze(0) for data in data_list], dim=0)  # Combine labels
+    # Create a single batched Data object
+    batched_data = Data(x=all_x, edge_index=all_edge_index, edge_attr=all_edge_attr, y=all_labels)
 
-        # Create a single batched Data object
-        batched_data = Data(x=all_x, edge_index=all_edge_index, edge_attr=all_edge_attr, y=all_labels)
-
-        # Save the processed data
-        output_file = 'processed_data.pt'
-        torch.save(batched_data, output_file)
-        print(f"Processed dataset saved to {output_file}")
+    # Save the processed data
+    # output_file = '3D-Point-Cloud-Denoising/Noise_Identification/processed_data.pt'
+    torch.save(batched_data, output_file)
+    print(f"Processed dataset saved to {output_file}")

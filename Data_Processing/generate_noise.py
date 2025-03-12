@@ -37,8 +37,8 @@ MAP = {
     'impulse': impulse_noise
 }
 
-INPUT_FOLDER = "3D_Data/punet_data/punet_d/50000_ground_truth"
-OUTPUT_FOLDER = "3D_Data/punet_data/punet_d/punet_noisy"
+INPUT_FOLDER = "3D_Data/pcnet_clean"
+OUTPUT_FOLDER = "3D_Data/pcnet_noisy"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 def load_xyz(file_path):
