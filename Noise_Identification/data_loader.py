@@ -6,80 +6,100 @@ import os
 from torch_geometric.data import Data
 
 def load_xyz(file_path):
-    data = np.loadtxt(file_path, usecols=(0, 1, 2))
-    return data
+    """Load XYZ point cloud data from a file with error handling."""
+    try:
+        data = np.loadtxt(file_path, usecols=(0, 1, 2))
+        return data
+    except Exception as e:
+        print(f"Warning: Skipping file {file_path} due to error: {e}")
+        return None
 
 def generate_input(point_cloud):
+    """Generate edge indices and attributes for the point cloud graph."""
+    try:
+        tri = Delaunay(point_cloud)
+        edges = set()
+        for simplex in tri.simplices:
+            for i in range(len(simplex)):
+                for j in range(i + 1, len(simplex)):
+                    edges.add(tuple(sorted([simplex[i], simplex[j]])))
 
-    tri = Delaunay(point_cloud)
-    # Extract the edges (pairs of points connected in the triangulation)
-    edges = set()
-    for simplex in tri.simplices:
-        for i in range(len(simplex)):
-            for j in range(i + 1, len(simplex)):
-                edges.add(tuple(sorted([simplex[i], simplex[j]])))
+        edge_index = torch.tensor(list(edges), dtype=torch.long).t().contiguous()
+        distances = np.linalg.norm(point_cloud[edge_index[0].numpy()] - point_cloud[edge_index[1].numpy()], axis=1)
+        edge_attr = torch.tensor(distances, dtype=torch.float).view(-1, 1)
 
-    # Convert the edge list to a torch tensor (edge_index)
-    edge_index = torch.tensor(list(edges), dtype=torch.long).t().contiguous()
-
-    # Calculate the distances (edge weights) based on Euclidean distance
-    distances = np.linalg.norm(point_cloud[edge_index[0].numpy()] - point_cloud[edge_index[1].numpy()], axis=1)
-    edge_attr = torch.tensor(distances, dtype=torch.float).view(-1, 1)
-
-    return edge_index, edge_attr
+        return edge_index, edge_attr
+    
+    except Exception as e:
+        print(f"Warning: Error in generating input graph. Skipping this point cloud. Error: {e}")
+        return None, None
 
 def get_label(file_name):
+    """Extract the noise label from the filename."""
     base_name = os.path.splitext(file_name)[0]
     
-    # Check if any noise level matches the end of the base file name
     for noise_level in config.noise_levels:
         if base_name.endswith(noise_level):
             parts = noise_level.split("_")
             noise, s = parts[0], int(parts[-1])
-            if s<3: severity = "low"
-            else: severity = "high"
-            return config.label_map[f"{noise}_{severity}"]
-            
-    return 0
+            severity = "low" if s < 3 else "high"
+            return config.label_map.get(f"{noise}_{severity}", 0)
+
+    return 0  # Default label if no match found
 
 def generate_data(folder_path, output_file):
-    # Load all .xyz files from the folder
+    """Process all XYZ files and save the final dataset with error handling."""
+    
     xyz_files = []
     for root, _, files in os.walk(folder_path):
         for f in files:
             if f.endswith('.xyz'):
                 xyz_files.append(os.path.join(root, f))
-    print("Processing ", len(xyz_files), " .xyz files")
+    print(f"Found {len(xyz_files)} .xyz files")
 
-    # Prepare the data list to hold all graph data
-    i = 0
     data_list = []
-
-    for file_path in xyz_files:
+    for i, file_path in enumerate(xyz_files):
+        print(f"Processing: {file_path}, File number ", i)
+        
+        # Load XYZ data
         data_array = load_xyz(file_path)
+        if data_array is None:
+            continue  # Skip corrupt files
+
+        # Generate graph input
         edge_index, edge_attr = generate_input(data_array)
+        if edge_index is None or edge_attr is None:
+            continue  # Skip files where graph creation failed
+
+        # Get label
         file_name = os.path.basename(file_path)
         label = get_label(file_name)
 
-        data = Data(
-            x=torch.tensor(data_array, dtype=torch.float), 
-            edge_index=edge_index, 
-            edge_attr=edge_attr,
-            y=torch.tensor(label, dtype=torch.long)
-        )
-        data_list.append(data)
-        print("File : ", i)
-        i += 1
-    
+        try:
+            data = Data(
+                x=torch.tensor(data_array, dtype=torch.float), 
+                edge_index=edge_index, 
+                edge_attr=edge_attr,
+                y=torch.tensor(label, dtype=torch.long)
+            )
+            data_list.append(data)
+
+        except Exception as e:
+            print(f"Warning: Skipping file {file_path} due to data creation error: {e}")
+
+    if not data_list:
+        print("Error: No valid data processed. Check input files.")
+        return
+
+    # Combine all processed data
     all_x = torch.cat([data.x for data in data_list], dim=0)
     all_edge_index = torch.cat([data.edge_index for data in data_list], dim=1)
     all_edge_attr = torch.cat([data.edge_attr for data in data_list], dim=0) if data_list[0].edge_attr is not None else None
-    all_labels = torch.cat([data.y.unsqueeze(0) for data in data_list], dim=0)  # Combine labels
+    all_labels = torch.cat([data.y.unsqueeze(0) for data in data_list], dim=0)
 
-    # Create a single batched Data object
+    # Create a batched dataset
     batched_data = Data(x=all_x, edge_index=all_edge_index, edge_attr=all_edge_attr, y=all_labels)
 
-    # Save the processed data
-    # output_file = '3D-Point-Cloud-Denoising/Noise_Identification/processed_data.pt'
+    # Save processed dataset
     torch.save(batched_data, output_file)
     print(f"Processed dataset saved to {output_file}")

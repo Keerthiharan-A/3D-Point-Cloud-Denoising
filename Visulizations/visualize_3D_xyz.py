@@ -26,6 +26,6 @@ def plot_point_cloud(points):
     plt.show()
 
 # Load the .xyz point cloud file
-file_path = 'punet_data/punet_d/50000_ground_truth/armadillo.xyz'  # Replace with your file path
+file_path = '3D_Data/pcnet_noisy/Cup33100k_background_4.xyz'  # Replace with your file path
 points = load_xyz(file_path)
 plot_point_cloud(points)
