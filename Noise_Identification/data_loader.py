@@ -3,7 +3,11 @@ import torch
 from scipy.spatial import Delaunay
 import config
 import os
+import multiprocessing
 from torch_geometric.data import Data
+
+# Set device to GPU if available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_xyz(file_path):
     """Load XYZ point cloud data from a file with error handling."""
@@ -24,12 +28,11 @@ def generate_input(point_cloud):
                 for j in range(i + 1, len(simplex)):
                     edges.add(tuple(sorted([simplex[i], simplex[j]])))
 
-        edge_index = torch.tensor(list(edges), dtype=torch.long).t().contiguous()
-        distances = np.linalg.norm(point_cloud[edge_index[0].numpy()] - point_cloud[edge_index[1].numpy()], axis=1)
-        edge_attr = torch.tensor(distances, dtype=torch.float).view(-1, 1)
+        edge_index = torch.tensor(list(edges), dtype=torch.long).t().contiguous().to(device)
+        distances = np.linalg.norm(point_cloud[edge_index[0].cpu().numpy()] - point_cloud[edge_index[1].cpu().numpy()], axis=1)
+        edge_attr = torch.tensor(distances, dtype=torch.float).view(-1, 1).to(device)
 
         return edge_index, edge_attr
-    
     except Exception as e:
         print(f"Warning: Error in generating input graph. Skipping this point cloud. Error: {e}")
         return None, None
@@ -47,9 +50,35 @@ def get_label(file_name):
 
     return 0  # Default label if no match found
 
-def generate_data(folder_path, output_file):
-    """Process all XYZ files and save the final dataset with error handling."""
-    
+def process_file(file_path):
+    """Process a single .xyz file."""
+    data_array = load_xyz(file_path)
+    if data_array is None:
+        return None  # Skip corrupt files
+
+    edge_index, edge_attr = generate_input(data_array)
+    if edge_index is None or edge_attr is None:
+        return None  # Skip files where graph creation failed
+
+    file_name = os.path.basename(file_path)
+    label = get_label(file_name)
+
+    try:
+        data = Data(
+            x=torch.tensor(data_array, dtype=torch.float).to(device), 
+            edge_index=edge_index, 
+            edge_attr=edge_attr,
+            y=torch.tensor(label, dtype=torch.long).to(device)
+        )
+        print("Processed ", file_path)
+        return data
+    except Exception as e:
+        print(f"Warning: Skipping file {file_path} due to data creation error: {e}")
+        return None
+
+def generate_data(folder_path, output_file, num_workers=4):
+    print(device)
+    # Get all .xyz files including subdirectories
     xyz_files = []
     for root, _, files in os.walk(folder_path):
         for f in files:
@@ -57,45 +86,22 @@ def generate_data(folder_path, output_file):
                 xyz_files.append(os.path.join(root, f))
     print(f"Found {len(xyz_files)} .xyz files")
 
-    data_list = []
-    for i, file_path in enumerate(xyz_files):
-        print(f"Processing: {file_path}, File number ", i)
-        
-        # Load XYZ data
-        data_array = load_xyz(file_path)
-        if data_array is None:
-            continue  # Skip corrupt files
+    # Use multiprocessing to process files in parallel
+    with multiprocessing.Pool(num_workers) as pool:
+        data_list = pool.map(process_file, xyz_files)
 
-        # Generate graph input
-        edge_index, edge_attr = generate_input(data_array)
-        if edge_index is None or edge_attr is None:
-            continue  # Skip files where graph creation failed
-
-        # Get label
-        file_name = os.path.basename(file_path)
-        label = get_label(file_name)
-
-        try:
-            data = Data(
-                x=torch.tensor(data_array, dtype=torch.float), 
-                edge_index=edge_index, 
-                edge_attr=edge_attr,
-                y=torch.tensor(label, dtype=torch.long)
-            )
-            data_list.append(data)
-
-        except Exception as e:
-            print(f"Warning: Skipping file {file_path} due to data creation error: {e}")
+    # Remove None values (failed files)
+    data_list = [data for data in data_list if data is not None]
 
     if not data_list:
         print("Error: No valid data processed. Check input files.")
         return
 
     # Combine all processed data
-    all_x = torch.cat([data.x for data in data_list], dim=0)
-    all_edge_index = torch.cat([data.edge_index for data in data_list], dim=1)
-    all_edge_attr = torch.cat([data.edge_attr for data in data_list], dim=0) if data_list[0].edge_attr is not None else None
-    all_labels = torch.cat([data.y.unsqueeze(0) for data in data_list], dim=0)
+    all_x = torch.cat([data.x for data in data_list], dim=0).to(device)
+    all_edge_index = torch.cat([data.edge_index for data in data_list], dim=1).to(device)
+    all_edge_attr = torch.cat([data.edge_attr for data in data_list], dim=0).to(device) if data_list[0].edge_attr is not None else None
+    all_labels = torch.cat([data.y.unsqueeze(0) for data in data_list], dim=0).to(device)
 
     # Create a batched dataset
     batched_data = Data(x=all_x, edge_index=all_edge_index, edge_attr=all_edge_attr, y=all_labels)
