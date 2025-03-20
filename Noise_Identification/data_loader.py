@@ -6,9 +6,6 @@ import os
 import multiprocessing
 from torch_geometric.data import Data
 
-# Set device to GPU if available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 def load_xyz(file_path):
     """Load XYZ point cloud data from a file with error handling."""
     try:
@@ -28,9 +25,9 @@ def generate_input(point_cloud):
                 for j in range(i + 1, len(simplex)):
                     edges.add(tuple(sorted([simplex[i], simplex[j]])))
 
-        edge_index = torch.tensor(list(edges), dtype=torch.long).t().contiguous().to(device)
+        edge_index = torch.tensor(list(edges), dtype=torch.long).t().contiguous()
         distances = np.linalg.norm(point_cloud[edge_index[0].cpu().numpy()] - point_cloud[edge_index[1].cpu().numpy()], axis=1)
-        edge_attr = torch.tensor(distances, dtype=torch.float).view(-1, 1).to(device)
+        edge_attr = torch.tensor(distances, dtype=torch.float).view(-1, 1)
 
         return edge_index, edge_attr
     
@@ -66,10 +63,10 @@ def process_file(file_path):
 
     try:
         data = Data(
-            x=torch.tensor(data_array, dtype=torch.float).to(device), 
+            x=torch.tensor(data_array, dtype=torch.float), 
             edge_index=edge_index, 
             edge_attr=edge_attr,
-            y=torch.tensor(label, dtype=torch.long).to(device)
+            y=torch.tensor(label, dtype=torch.long)
         )
         print("Processed ", file_path)
         return data
@@ -79,7 +76,6 @@ def process_file(file_path):
         return None
 
 def generate_data(folder_path, output_file, num_workers=4):
-    print(device)
     # Get all .xyz files including subdirectories
     count = 0
     xyz_files = []
