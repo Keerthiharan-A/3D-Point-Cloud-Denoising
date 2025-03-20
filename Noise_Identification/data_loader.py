@@ -33,6 +33,7 @@ def generate_input(point_cloud):
         edge_attr = torch.tensor(distances, dtype=torch.float).view(-1, 1).to(device)
 
         return edge_index, edge_attr
+    
     except Exception as e:
         print(f"Warning: Error in generating input graph. Skipping this point cloud. Error: {e}")
         return None, None
@@ -72,6 +73,7 @@ def process_file(file_path):
         )
         print("Processed ", file_path)
         return data
+    
     except Exception as e:
         print(f"Warning: Skipping file {file_path} due to data creation error: {e}")
         return None
@@ -79,12 +81,14 @@ def process_file(file_path):
 def generate_data(folder_path, output_file, num_workers=4):
     print(device)
     # Get all .xyz files including subdirectories
+    count = 0
     xyz_files = []
     for root, _, files in os.walk(folder_path):
         for f in files:
             if f.endswith('.xyz'):
                 xyz_files.append(os.path.join(root, f))
-    print(f"Found {len(xyz_files)} .xyz files")
+                count += 1
+    print(f"Found {count} .xyz files")
 
     # Use multiprocessing to process files in parallel
     with multiprocessing.Pool(num_workers) as pool:
@@ -97,15 +101,6 @@ def generate_data(folder_path, output_file, num_workers=4):
         print("Error: No valid data processed. Check input files.")
         return
 
-    # Combine all processed data
-    all_x = torch.cat([data.x for data in data_list], dim=0).to(device)
-    all_edge_index = torch.cat([data.edge_index for data in data_list], dim=1).to(device)
-    all_edge_attr = torch.cat([data.edge_attr for data in data_list], dim=0).to(device) if data_list[0].edge_attr is not None else None
-    all_labels = torch.cat([data.y.unsqueeze(0) for data in data_list], dim=0).to(device)
-
-    # Create a batched dataset
-    batched_data = Data(x=all_x, edge_index=all_edge_index, edge_attr=all_edge_attr, y=all_labels)
-
     # Save processed dataset
-    torch.save(batched_data, output_file)
+    torch.save(data_list, output_file)
     print(f"Processed dataset saved to {output_file}")

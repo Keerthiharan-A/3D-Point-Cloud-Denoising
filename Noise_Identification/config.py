@@ -3,6 +3,7 @@ hidden_dim = 128
 latent_dim = 64
 learning_rate = 0.001
 num_classes = 9
+num_epochs = 1000
 
 label_map = {
     "clean": 0,

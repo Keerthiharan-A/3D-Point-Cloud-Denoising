@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 save_xyz(output_file, noisy_pc)
                 print(f"Saved: {output_file}")
     
-    print("Noise generation complete!")
+    print("Noise generation completed!")
     
     # print('[', end="")
     # for corruption, func in MAP.items():
